@@ -1,17 +1,21 @@
 'use client'
 
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { createContext, useContext, useCallback, useEffect } from 'react'
+import { createContext, useContext, useCallback, useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { useQuery } from '@tanstack/react-query'
 import { supabase } from '@/lib/supabase/client'
 
+// Track last attempt time
+let lastAttemptTime = 0;
+const RETRY_DELAY = 60000; // 1 minute delay
+
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
-      retry: 1,
+      retry: false,
       refetchOnWindowFocus: false,
-      staleTime: 1000 * 60 * 5 // Cache for 5 minutes
+      staleTime: 1000 * 60 * 5
     }
   }
 })
@@ -22,7 +26,6 @@ interface Profile {
   created_at: string
 }
 
-// Create auth context
 const AuthContext = createContext<{
   session: any
   profile: Profile | null | undefined
@@ -44,22 +47,47 @@ export const useAuth = () => {
 
 function AuthProvider({ children }: { children: React.ReactNode }) {
   const router = useRouter()
+  const [initializing, setInitializing] = useState(true)
+
+  // Initialize session
+  useEffect(() => {
+    const initializeSession = async () => {
+      try {
+        const { data: { session }, error } = await supabase.auth.getSession()
+        if (error) throw error
+        if (!session && window.location.pathname !== '/login') {
+          router.replace('/login')
+        }
+        setInitializing(false)
+      } catch (error) {
+        console.error('Error initializing session:', error)
+        router.replace('/login')
+      }
+    }
+
+    initializeSession()
+  }, [router])
 
   const { data: session, isLoading: isSessionLoading } = useQuery({
     queryKey: ['session'],
     queryFn: async () => {
-      const { data: { session } } = await supabase.auth.getSession()
-      return session
-    }
+      try {
+        const { data: { session }, error } = await supabase.auth.getSession()
+        if (error) throw error
+        return session
+      } catch (error) {
+        console.error('Error getting session:', error)
+        return null
+      }
+    },
+    enabled: !initializing
   })
 
   const { data: profile, isLoading: isProfileLoading } = useQuery({
     queryKey: ['profile', session?.user?.id],
     queryFn: async () => {
       if (!session?.user?.id) return null
-
       try {
-        // First try to get the profile
         const { data: profile, error } = await supabase
           .from('profiles')
           .select('id, role, created_at')
@@ -68,7 +96,6 @@ function AuthProvider({ children }: { children: React.ReactNode }) {
 
         if (error) {
           if (error.code === 'PGRST116') {
-            // Profile doesn't exist, create one
             const { data: newProfile, error: createError } = await supabase
               .from('profiles')
               .insert([{ id: session.user.id, role: 'user' }])
@@ -79,43 +106,28 @@ function AuthProvider({ children }: { children: React.ReactNode }) {
               console.error('Error creating profile:', createError)
               return null
             }
-
-            // Refresh session to include role
-            await supabase.auth.refreshSession()
-            
             return newProfile as Profile
           }
           console.error('Error fetching profile:', error)
           return null
         }
-
-        if (profile) {
-          // Refresh session to ensure role is included
-          await supabase.auth.refreshSession()
-          return profile as Profile
-        }
-
-        return null
+        return profile as Profile
       } catch (error) {
         console.error('Error in profile flow:', error)
         return null
       }
     },
-    enabled: !!session?.user?.id,
-    retry: 2
+    enabled: !!session?.user?.id && !initializing
   })
 
-  // Effect to handle session changes
   useEffect(() => {
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange(async (event, session) => {
       if (event === 'SIGNED_IN') {
-        // Refresh queries when signed in
         queryClient.invalidateQueries({ queryKey: ['session'] })
         queryClient.invalidateQueries({ queryKey: ['profile'] })
       } else if (event === 'SIGNED_OUT') {
-        // Clear queries when signed out
         queryClient.clear()
         router.replace('/login')
       }
@@ -128,15 +140,33 @@ function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const signIn = useCallback(async (email: string, password: string) => {
     try {
-      const { error } = await supabase.auth.signInWithPassword({
-        email,
-        password
-      })
-      if (error) throw error
+      // Check if enough time has passed since last attempt
+      const now = Date.now();
+      const timeSinceLastAttempt = now - lastAttemptTime;
+      if (timeSinceLastAttempt < RETRY_DELAY) {
+        const waitTime = Math.ceil((RETRY_DELAY - timeSinceLastAttempt) / 1000);
+        throw new Error(`Please wait ${waitTime} seconds before trying again.`);
+      }
+
+      // Update last attempt time
+      lastAttemptTime = now;
+
+      const { error } = await supabase.auth.signInWithPassword({ email, password })
       
-      // Navigate to home page after successful sign in
+      if (error) {
+        if (error.status === 429) {
+          throw new Error('Please wait 1 minute before trying again.')
+        }
+        if (error.message.includes('Invalid login credentials')) {
+          throw new Error('Invalid email or password.')
+        }
+        throw error
+      }
+      
+      // Reset last attempt time on successful login
+      lastAttemptTime = 0;
       router.replace('/')
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error signing in:', error)
       throw error
     }
@@ -146,6 +176,7 @@ function AuthProvider({ children }: { children: React.ReactNode }) {
     try {
       const { error } = await supabase.auth.signOut()
       if (error) throw error
+      queryClient.clear()
       router.replace('/login')
     } catch (error) {
       console.error('Error signing out:', error)
@@ -156,7 +187,11 @@ function AuthProvider({ children }: { children: React.ReactNode }) {
   const isAdmin = profile?.role === 'admin'
   const isSales = profile?.role === 'sales'
   const isAuthenticated = !!session?.user
-  const isLoading = isSessionLoading || (!!session?.user && isProfileLoading)
+  const isLoading = initializing || isSessionLoading || (!!session?.user && isProfileLoading)
+
+  if (initializing) {
+    return null
+  }
 
   return (
     <AuthContext.Provider
