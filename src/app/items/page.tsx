@@ -8,6 +8,13 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase/client';
 import { Item } from '@/types/schema';
 
+interface MealComponent {
+  id: number;
+  meal_sets: {
+    name: string | null;
+  } | null;
+}
+
 export default function ItemsPage() {
   const { data: items = [], isLoading, error } = useItems();
   const [newItemName, setNewItemName] = useState('');
@@ -31,6 +38,27 @@ export default function ItemsPage() {
 
   const deleteItemMutation = useMutation({
     mutationFn: async (id: number) => {
+      // First, check if item is used in any meal components
+      const { data: mealComponents, error: checkError } = await supabase
+        .from('meal_components')
+        .select('id, meal_sets(name)')
+        .eq('item_id', id) as { data: MealComponent[] | null; error: any };
+      
+      if (checkError) throw checkError;
+      
+      if (mealComponents && mealComponents.length > 0) {
+        // Item is used in meal sets, show error with details
+        const mealSetNames = mealComponents
+          .map(mc => mc.meal_sets?.name)
+          .filter((name): name is string => Boolean(name));
+        
+        throw new Error(
+          `Cannot delete this item because it is used in the following meal sets: ${Array.from(new Set(mealSetNames)).join(', ')}. ` +
+          'Please remove it from these meal sets first.'
+        );
+      }
+
+      // If no references exist, delete the item
       const { error } = await supabase
         .from('items')
         .delete()
@@ -58,8 +86,10 @@ export default function ItemsPage() {
   const handleDelete = async (itemId: number) => {
     try {
       await deleteItemMutation.mutateAsync(itemId);
-    } catch (err) {
+    } catch (err: any) {
       console.error('Failed to delete item:', err);
+      // Show error message to user
+      window.alert(err.message || 'Failed to delete item. Please try again.');
     }
   };
 
