@@ -40,9 +40,12 @@ export function useMealSets() {
         return (data || []) as unknown as MealSet[]
       } catch (error) {
         console.error('Error in meal sets query:', error)
-        return []
+        throw error
       }
     },
-    retry: 2
+    retry: 3,
+    retryDelay: (attemptIndex) => Math.min(1000 * 2 ** attemptIndex, 30000),
+    staleTime: 1000 * 60 * 5,
+    refetchOnWindowFocus: false
   })
-} 
+}
