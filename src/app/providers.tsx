@@ -25,7 +25,7 @@ interface Profile {
 // Create auth context
 const AuthContext = createContext<{
   session: any
-  profile: Profile | null
+  profile: Profile | null | undefined
   isAdmin: boolean
   isSales: boolean
   isAuthenticated: boolean

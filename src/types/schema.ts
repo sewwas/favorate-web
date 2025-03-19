@@ -48,4 +48,10 @@ export interface DailyUsageSummary {
   items: UsageItem[]
   total_items: number
   unique_items: number
+}
+
+export interface ItemUsageSummary {
+  item_name: string
+  total_used: number
+  breakdown: Array<UsageBreakdown & { sale_date: string }>
 } 
