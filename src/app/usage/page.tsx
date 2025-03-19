@@ -10,6 +10,7 @@ import { CalendarIcon } from '@radix-ui/react-icons'
 import { format, subDays, startOfWeek, endOfWeek, startOfMonth, endOfMonth } from 'date-fns'
 import { UsageItem } from '@/types/schema'
 import { cn } from '@/lib/utils'
+import { RecordSaleForm } from '@/components/sales/record-sale-form'
 
 type DateRange = 'daily' | 'weekly' | 'monthly' | 'custom'
 
@@ -85,9 +86,12 @@ export default function UsagePage() {
 
   return (
     <div className="container mx-auto px-4 py-8">
-      <div className="mb-8">
-        <h1 className="text-2xl font-bold">Usage Tracking</h1>
-        <p className="text-gray-600">Track item usage across meal sets</p>
+      <div className="mb-8 flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-bold">Usage Tracking</h1>
+          <p className="text-gray-600">Track item usage across meal sets</p>
+        </div>
+        <RecordSaleForm />
       </div>
 
       <div className="mb-8 flex flex-wrap gap-4">
