@@ -65,6 +65,48 @@ export default function MealSetsPage() {
     }
   }
 
+  const handleEdit = async (id: number, data: {
+    name: string
+    components: Array<{ item_id: number; quantity: number }>
+  }) => {
+    try {
+      // Update meal set name
+      const { error: nameError } = await supabase
+        .from('meal_sets')
+        .update({ name: data.name })
+        .eq('id', id)
+
+      if (nameError) throw nameError
+
+      // Delete existing components
+      const { error: deleteError } = await supabase
+        .from('meal_components')
+        .delete()
+        .eq('meal_set_id', id)
+
+      if (deleteError) throw deleteError
+
+      // Add new components
+      for (const component of data.components) {
+        const { error: componentError } = await supabase
+          .from('meal_components')
+          .insert({
+            meal_set_id: id,
+            item_id: component.item_id,
+            quantity: component.quantity
+          })
+
+        if (componentError) throw componentError
+      }
+
+      toast.success('Meal set updated successfully')
+      queryClient.invalidateQueries({ queryKey: ['meal-sets'] })
+    } catch (error: any) {
+      console.error('Error updating meal set:', error)
+      toast.error('Failed to update meal set')
+    }
+  }
+
   const handleAddMealSet = async (data: {
     name: string
     components: Array<{ item_id: number; quantity: number }>
@@ -146,7 +188,12 @@ export default function MealSetsPage() {
       ) : (
         <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
           {mealSets?.map((mealSet) => (
-            <MealSetCard key={mealSet.id} mealSet={mealSet} onDelete={handleDelete} />
+            <MealSetCard 
+              key={mealSet.id} 
+              mealSet={mealSet} 
+              onDelete={handleDelete}
+              onEdit={handleEdit}
+            />
           ))}
         </div>
       )}

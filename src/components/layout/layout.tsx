@@ -1,56 +1,44 @@
-import { ReactNode } from 'react';
-import { useAuth } from '@/app/providers';
-import { Nav } from './nav';
-import { useRouter } from 'next/navigation';
+'use client'
+
+import { Header } from './Header'
+import { useAuth } from '@/app/providers'
+import { LoadingSpinner } from '../ui/loading-spinner'
 
 interface LayoutProps {
-  children: ReactNode;
-  requireAuth?: boolean;
-  requireAdmin?: boolean;
-  requireSales?: boolean;
+  children: React.ReactNode
 }
 
-export function Layout({ 
-  children, 
-  requireAuth = true,
-  requireAdmin = false,
-  requireSales = false
-}: LayoutProps) {
-  const { isLoading, session, isAdmin, isSales } = useAuth();
-  const router = useRouter();
-
-  // Handle authentication and authorization
-  if (requireAuth && !isLoading && !session) {
-    router.push('/login');
-    return null;
-  }
-
-  if (requireAdmin && !isAdmin) {
-    router.push('/dashboard');
-    return null;
-  }
-
-  if (requireSales && !isAdmin && !isSales) {
-    router.push('/dashboard');
-    return null;
-  }
+export function Layout({ children }: LayoutProps) {
+  const { isLoading } = useAuth()
 
   if (isLoading) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="animate-spin rounded-full h-32 w-32 border-t-2 border-b-2 border-gray-900"></div>
+      <div className="flex min-h-screen items-center justify-center">
+        <LoadingSpinner />
       </div>
-    );
+    )
   }
 
   return (
-    <div className="min-h-screen bg-gray-100">
-      {session && <Nav />}
-      <main className="py-10">
-        <div className="max-w-7xl mx-auto sm:px-6 lg:px-8">
+    <div className="relative min-h-screen bg-background">
+      <Header />
+      <main className="container mx-auto flex-1 space-y-4 px-4 py-8 sm:px-8 md:space-y-6">
+        <div className="mx-auto w-full max-w-7xl">
           {children}
         </div>
       </main>
+      <footer className="border-t bg-white py-6">
+        <div className="container mx-auto px-4 sm:px-8">
+          <div className="flex flex-col items-center justify-between space-y-4 text-sm text-muted-foreground md:flex-row md:space-y-0">
+            <p>© {new Date().getFullYear()} Favorite Chicken. All rights reserved.</p>
+            <div className="flex space-x-4">
+              <a href="#" className="hover:text-primary">Privacy Policy</a>
+              <a href="#" className="hover:text-primary">Terms of Service</a>
+              <a href="#" className="hover:text-primary">Contact</a>
+            </div>
+          </div>
+        </div>
+      </footer>
     </div>
-  );
+  )
 }

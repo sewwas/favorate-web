@@ -7,29 +7,44 @@ export async function middleware(req: NextRequest) {
   const supabase = createMiddlewareClient({ req, res })
 
   try {
+    // Refresh the session if needed
+    await supabase.auth.getSession()
+
     const {
       data: { session },
     } = await supabase.auth.getSession()
 
-    // If user is not signed in and the current path is not /login,
-    // redirect the user to /login
-    if (!session && req.nextUrl.pathname !== '/login') {
-      return NextResponse.redirect(new URL('/login', req.url))
+    // Public routes that don't require authentication
+    const publicRoutes = ['/login', '/register', '/forgot-password']
+    const isPublicRoute = publicRoutes.includes(req.nextUrl.pathname)
+
+    // If user is not signed in and trying to access a protected route
+    if (!session && !isPublicRoute) {
+      const redirectUrl = new URL('/login', req.url)
+      redirectUrl.searchParams.set('redirectTo', req.nextUrl.pathname)
+      return NextResponse.redirect(redirectUrl)
     }
 
-    // If user is signed in and the current path is /login,
-    // redirect the user to /
-    if (session && req.nextUrl.pathname === '/login') {
+    // If user is signed in and trying to access auth routes
+    if (session && isPublicRoute) {
       return NextResponse.redirect(new URL('/', req.url))
     }
 
     return res
   } catch (error) {
     console.error('Middleware error:', error)
+    
+    // On critical errors, redirect to login
+    if (error instanceof Error && error.message.includes('Invalid Refresh Token')) {
+      const redirectUrl = new URL('/login', req.url)
+      redirectUrl.searchParams.set('error', 'session_expired')
+      return NextResponse.redirect(redirectUrl)
+    }
+
     return res
   }
 }
 
 export const config = {
-  matcher: ['/((?!api|_next/static|_next/image|favicon.ico).*)'],
+  matcher: ['/((?!api|_next/static|_next/image|favicon.ico|.*\\.png$).*)'],
 } 
